@@ -174,7 +174,7 @@ a.source-link{color:#2563eb;text-decoration:underline;}
     <button id="finishCookingBtn" class="w-full py-3 bg-primary text-white rounded-xl mt-4">完成烹饪</button>
   </div>
 
-  <!-- 评分备注弹窗 -->
+  <!-- 评分备注弹窗（含图片上传） -->
   <div id="modalRating" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50 p-4">
     <div class="bg-white w-full max-w-sm rounded-2xl p-5">
       <h3 class="text-lg font-semibold mb-4">记录评分与备注</h3>
@@ -189,6 +189,16 @@ a.source-link{color:#2563eb;text-decoration:underline;}
         <label class="text-sm text-neutral-600 block mb-1">备注</label>
         <textarea id="ratingNote" rows="2" class="w-full p-3 bg-neutral-50 rounded-xl resize-none" placeholder="例如：盐放多了"></textarea>
       </div>
+      <!-- 图片上传模块 -->
+      <div class="mb-4">
+        <label class="text-sm text-neutral-600 block mb-1">上传图片</label>
+        <input type="file" id="ratingImageInput" accept="image/*" class="hidden">
+        <div id="ratingImagePreviewWrap" class="hidden relative w-24 h-24 mt-2">
+          <img id="ratingImagePreview" class="w-full h-full object-cover rounded-xl" src="">
+          <button id="removeRatingImageBtn" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">×</button>
+        </div>
+        <button id="uploadImageBtn" class="mt-2 text-sm bg-neutral-100 text-neutral-600 px-3 py-1 rounded-lg">选择图片</button>
+      </div>
       <div class="flex gap-2">
         <button id="ratingCancelBtn" class="flex-1 py-2 bg-neutral-100 rounded-xl">取消</button>
         <button id="ratingSaveBtn" class="flex-1 py-2 bg-primary text-white rounded-xl">保存</button>
@@ -196,16 +206,16 @@ a.source-link{color:#2563eb;text-decoration:underline;}
     </div>
   </div>
 
-  <!-- 底部导航 -->
+  <!-- 底部导航（移除固定颜色类，由JS动态控制） -->
   <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-neutral-100 px-4 py-3 z-40">
     <div class="flex justify-around">
-      <button data-page="home" class="navBtn flex flex-col items-center text-primary">
+      <button data-page="home" class="navBtn flex flex-col items-center">
         <i data-lucide="calendar" class="w-5 h-5"></i><span class="text-xs mt-1">记录</span>
       </button>
-      <button data-page="library" class="navBtn flex flex-col items-center text-neutral-400">
+      <button data-page="library" class="navBtn flex flex-col items-center">
         <i data-lucide="book-open" class="w-5 h-5"></i><span class="text-xs mt-1">食谱库</span>
       </button>
-      <button data-page="shopping" class="navBtn flex flex-col items-center text-neutral-400">
+      <button data-page="shopping" class="navBtn flex flex-col items-center">
         <i data-lucide="shopping-cart" class="w-5 h-5"></i><span class="text-xs mt-1">购物清单</span>
       </button>
     </div>
@@ -215,13 +225,14 @@ a.source-link{color:#2563eb;text-decoration:underline;}
 <script>
 lucide.createIcons();
 const DB_NAME = "RecipeSimpleDB";
-const DB_VER = 2; // 升级版本
+const DB_VER = 2;
 let db = null;
 let currentDate = new Date().toISOString().split('T')[0];
 let selectedRecipeId = null;
 let editMode = false;
 let currentRatingLogId = null;
 let currentStars = 0;
+let currentRatingImageBase64 = ""; // 暂存当前编辑的图片
 let timerInterval = null;
 let timerSeconds = 0;
 let timerRunning = false;
@@ -280,19 +291,15 @@ const dbClear = store=>new Promise(r=>{
   t.oncomplete=()=>r();
 })
 
-// 页面切换
+// 页面切换（修复导航高亮）
 function switchPage(pageName){
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
   document.getElementById("page-"+pageName).classList.add("active");
   document.querySelectorAll(".navBtn").forEach(b=>{
     const active = b.dataset.page === pageName;
-    const icon = b.querySelector("i");
-    const span = b.querySelector("span");
-    icon.classList.toggle("text-primary",active);
-    icon.classList.toggle("text-neutral-400",!active);
-    span.classList.toggle("text-primary",active);
-    span.classList.toggle("text-neutral-400",!active);
-  })
+    b.classList.remove("text-primary", "text-neutral-400");
+    b.classList.add(active ? "text-primary" : "text-neutral-400");
+  });
   if(pageName==="library") renderRecipeLibrary();
   if(pageName==="home") renderHomePage();
   if(pageName==="shopping") renderShoppingList();
@@ -351,12 +358,16 @@ async function renderHomePage(){
       const r = recipes.find(r=>r.id===item.recipeId);
       const stars = item.rating ? '★'.repeat(item.rating) + '☆'.repeat(5-item.rating) : '';
       const note = item.note ? `<span class="text-xs text-neutral-400 ml-1">${item.note}</span>` : '';
+      const imgHtml = item.image ? `<img src="${item.image}" class="w-10 h-10 object-cover rounded-lg ml-2 cursor-pointer view-log-img" data-img="${item.image}">` : '';
       return `
       <div class="py-2 border-b border-neutral-100 flex justify-between items-center">
-        <div>
-          <span>✅ ${r?.name||"已删除菜品"}</span>
-          ${stars ? `<span class="text-yellow-400 text-xs ml-1">${stars}</span>` : ''}
-          ${note}
+        <div class="flex items-center">
+          <div>
+            <span>✅ ${r?.name||"已删除菜品"}</span>
+            ${stars ? `<span class="text-yellow-400 text-xs ml-1">${stars}</span>` : ''}
+            ${note}
+          </div>
+          ${imgHtml}
         </div>
         <div class="flex gap-1">
           <button class="editLogBtn text-blue-400 text-xs px-2 py-1" data-logid="${item.id}">编辑</button>
@@ -364,6 +375,8 @@ async function renderHomePage(){
         </div>
       </div>`
     }).join("");
+
+    // 删除记录
     document.querySelectorAll(".delLogBtn").forEach(btn=>{
       btn.onclick = async ()=>{
         if(confirm("确定删除这条做菜记录？")){
@@ -372,14 +385,22 @@ async function renderHomePage(){
         }
       }
     });
+    // 编辑记录（打开评分弹窗，回显图片）
     document.querySelectorAll(".editLogBtn").forEach(btn=>{
       btn.onclick = async ()=>{
         const logId = Number(btn.dataset.logid);
         const log = todayLogs.find(x=>x.id === logId);
         if (log) {
-          openRatingModal(logId, log.rating || 0, log.note || "");
+          openRatingModal(logId, log.rating || 0, log.note || "", log.image || "");
         }
       }
+    });
+    // 点击图片放大
+    document.querySelectorAll(".view-log-img").forEach(img => {
+      img.onclick = () => {
+        const w = window.open();
+        w.document.write(`<img src="${img.dataset.img}" style="max-width:100%; height:auto;">`);
+      };
     });
   }
 
@@ -392,13 +413,9 @@ async function renderHomePage(){
     `).join("");
     document.querySelectorAll(".recipeLogItem").forEach(el=>{
       el.onclick = async ()=>{
-        // 记录时弹出评分备注
         const recipeId = el.dataset.id;
         const log = { date: currentDate, recipeId };
-        const id = await dbAdd("cookLogs", log);
-        // 由于 dbAdd 未返回 id，这里需要调整，暂时用重新获取的方式
-        // 简化：直接打开评分弹窗，保存时再更新
-        // 但为了简单，先记录，然后获取最新记录 ID
+        await dbAdd("cookLogs", log);
         const logsAfter = await dbGetAll("cookLogs");
         const newLog = logsAfter[logsAfter.length-1];
         openRatingModal(newLog.id, 0, "");
@@ -410,12 +427,24 @@ async function renderHomePage(){
   lucide.createIcons();
 }
 
-// 打开评分弹窗
-function openRatingModal(logId, rating, note) {
+// 打开评分弹窗（增加图片参数）
+function openRatingModal(logId, rating, note, imageBase64 = "") {
   currentRatingLogId = logId;
   currentStars = rating;
+  currentRatingImageBase64 = imageBase64;
   document.getElementById("ratingNote").value = note;
   updateStars(rating);
+  
+  const previewWrap = document.getElementById("ratingImagePreviewWrap");
+  const previewImg = document.getElementById("ratingImagePreview");
+  if (imageBase64) {
+    previewImg.src = imageBase64;
+    previewWrap.classList.remove("hidden");
+  } else {
+    previewImg.src = "";
+    previewWrap.classList.add("hidden");
+  }
+  
   showModal("modalRating");
 }
 function updateStars(rating) {
@@ -432,7 +461,7 @@ document.getElementById("ratingStars").addEventListener("click", (e) => {
     updateStars(currentStars);
   }
 });
-// 保存评分
+// 保存评分（增加图片保存）
 document.getElementById("ratingSaveBtn").onclick = async () => {
   const note = document.getElementById("ratingNote").value.trim();
   const logs = await dbGetAll("cookLogs");
@@ -440,6 +469,7 @@ document.getElementById("ratingSaveBtn").onclick = async () => {
   if (log) {
     log.rating = currentStars;
     log.note = note;
+    log.image = currentRatingImageBase64;
     await dbPut("cookLogs", log);
   }
   hideModal("modalRating");
@@ -447,7 +477,29 @@ document.getElementById("ratingSaveBtn").onclick = async () => {
 };
 document.getElementById("ratingCancelBtn").onclick = () => hideModal("modalRating");
 
-// 食谱库渲染+搜索（按菜名或食材）
+// 图片上传相关事件
+document.getElementById("uploadImageBtn").onclick = () => {
+  document.getElementById("ratingImageInput").click();
+};
+document.getElementById("ratingImageInput").onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    currentRatingImageBase64 = ev.target.result;
+    document.getElementById("ratingImagePreview").src = currentRatingImageBase64;
+    document.getElementById("ratingImagePreviewWrap").classList.remove("hidden");
+  };
+  reader.readAsDataURL(file);
+};
+document.getElementById("removeRatingImageBtn").onclick = () => {
+  currentRatingImageBase64 = "";
+  document.getElementById("ratingImagePreview").src = "";
+  document.getElementById("ratingImagePreviewWrap").classList.add("hidden");
+  document.getElementById("ratingImageInput").value = "";
+};
+
+// 食谱库渲染+搜索
 async function renderRecipeLibrary(){
   const searchText = document.getElementById("recipeSearchInput").value.trim().toLowerCase();
   const list = await dbGetAll("recipes");
@@ -477,7 +529,6 @@ async function renderRecipeLibrary(){
         selectedRecipeId = el.dataset.id;
         const recipe = all.find(x=>x.id === selectedRecipeId);
         document.getElementById("detailName").innerText = recipe.name;
-        // 食材展示
         const detailIng = document.getElementById("detailIngredients");
         if (recipe.ingredients && recipe.ingredients.length) {
           detailIng.innerHTML = recipe.ingredients.map(ing => `<div>• ${ing.name} ${ing.amount}</div>`).join('');
@@ -496,7 +547,6 @@ async function renderRecipeLibrary(){
     })
   }
   lucide.createIcons();
-  // 备份提醒
   updateBackupReminder();
 }
 
@@ -593,11 +643,9 @@ async function startCooking() {
       </div>
     </div>
   `).join('');
-  // 绑定勾选
   container.querySelectorAll(".step-check").forEach(el => {
     el.onclick = () => el.classList.toggle("checked");
   });
-  // 绑定计时
   container.querySelectorAll(".set-timer").forEach(btn => {
     btn.onclick = () => {
       const text = btn.dataset.stepText;
@@ -631,10 +679,8 @@ document.getElementById("finishCookingBtn").onclick = () => {
   document.getElementById("cookingOverlay").classList.remove("show");
   clearInterval(timerInterval);
   timerRunning = false;
-  // 记录今日
   addLogFromDetail();
 };
-// 计时器控制
 function updateTimerDisplay() {
   const m = Math.floor(timerSeconds / 60).toString().padStart(2,'0');
   const s = (timerSeconds % 60).toString().padStart(2,'0');
@@ -673,12 +719,9 @@ async function addToShoppingList() {
     alert("未找到食谱");
     return;
   }
-
-  // 兼容旧数据：如果没有 ingredients，就从 material 解析
   let ingredients = recipe.ingredients;
   if (!ingredients || ingredients.length === 0) {
     if (recipe.material) {
-      // 按行拆分，每行作为一个食材条目
       ingredients = recipe.material.split('\n')
         .map(line => line.trim())
         .filter(line => line)
@@ -688,8 +731,6 @@ async function addToShoppingList() {
       return;
     }
   }
-
-  // 写入购物清单
   for (const ing of ingredients) {
     await dbAdd("shoppingList", {
       name: ing.name,
@@ -698,12 +739,9 @@ async function addToShoppingList() {
       recipeName: recipe.name
     });
   }
-
   alert("✅ 已加入购物清单");
   hideModal("modalRecipeDetail");
-  // 立即刷新购物清单页面
   renderShoppingList();
-  // 如果当前在购物清单页面，刷新一下
   if (document.getElementById("page-shopping").classList.contains("active")) {
     renderShoppingList();
   }
@@ -726,7 +764,6 @@ async function renderShoppingList() {
       <button class="text-red-400 text-sm del-shopping" data-id="${item.id}">删除</button>
     </div>
   `).join('');
-  // 绑定勾选
   container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.onchange = async () => {
       const id = Number(cb.dataset.id);
@@ -738,7 +775,6 @@ async function renderShoppingList() {
       }
     };
   });
-  // 绑定删除
   container.querySelectorAll('.del-shopping').forEach(btn => {
     btn.onclick = async () => {
       await dbDel("shoppingList", Number(btn.dataset.id));
@@ -848,7 +884,6 @@ async function bindEvents(){
   document.getElementById("addToShoppingBtn").onclick = addToShoppingList;
   document.getElementById("addIngredientBtn").onclick = () => addIngredientRow();
 
-  //导出导入按钮事件
   document.getElementById("exportBtn").onclick = exportBackup;
   document.getElementById("importBtn").onclick = ()=>{
     document.getElementById("fileInput").click();
